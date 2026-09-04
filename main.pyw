@@ -1,13 +1,14 @@
 import sys
 import keyboard
 from PIL.Image import Image
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle
-from PySide6.QtCore import QThread, Signal, QObject
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QStyle, QInputDialog
+from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QAction, QActionGroup
 
 from capture_service import CaptureService
 from gemini_service import GeminiService
 from answer_panel import AnswerPanel
+from cache_service import CacheService 
 
 class HotkeySignal(QObject):
     triggered = Signal()
@@ -15,15 +16,43 @@ class HotkeySignal(QObject):
 class ApiWorker(QThread):
     finished = Signal(dict)
     
-    def __init__(self, image: Image, gemini_service: GeminiService, model_name: str):
+    def __init__(self, image: Image, gemini_service: GeminiService, cache_service: CacheService, model_name: str):
         super().__init__()
         self.image = image
         self.gemini_service = gemini_service
+        self.cache_service = cache_service
         self.model_name = model_name
         
     def run(self):
-        result = self.gemini_service.analyze_image(self.image, self.model_name)
-        self.finished.emit(result)
+        try:
+            # 1. Cache 조회
+            cached_result = self.cache_service.get_cached_result(self.image, self.model_name)
+            
+            if cached_result:
+                conf = cached_result.get('confidence', '')
+                if "Cached ⚡" not in conf:
+                    cached_result['confidence'] = f"{conf} / Cached ⚡"
+                self.finished.emit(cached_result)
+                return
+
+            # 2. Cache Miss 시 API 호출
+            result = self.gemini_service.analyze_image(self.image, self.model_name)
+            
+            # 3. 캐시에 저장
+            if result.get("answer") != "오류 발생":
+                self.cache_service.save_result(self.image, result, self.model_name)
+                
+            self.finished.emit(result)
+            
+        except Exception as e:
+            # 🚨 스레드 내부 크래시 방지 및 원인 출력 로직
+            import traceback
+            error_details = traceback.format_exc()
+            self.finished.emit({
+                "answer": "시스템 에러 발생",
+                "confidence": "low",
+                "reason": f"백그라운드 스레드에서 오류가 발생했습니다:\n{str(e)}\n\n(주요 원인: imagehash/numpy/scipy 모듈 누락, 또는 JSON 파일 쓰기 권한 부족)"
+            })
 
 class StudyAssistantApp:
     def __init__(self):
@@ -32,6 +61,7 @@ class StudyAssistantApp:
         
         self.capture_service = CaptureService()
         self.gemini_service = GeminiService()
+        self.cache_service = CacheService()
         self.panel = AnswerPanel()
         
         self.display_mode = "full"
@@ -167,10 +197,14 @@ class StudyAssistantApp:
         self.app.quit()
 
     def on_hotkey_pressed(self):
-        self.panel.show_loading(self.display_mode)
+        # 1. 화면 캡처를 가장 먼저 실행 (UI 간섭 완벽 배제)
         screenshot = self.capture_service.capture_full_screen()
         
-        self.worker = ApiWorker(screenshot, self.gemini_service, self.current_model)
+        # 2. 캡처가 끝난 후 로딩 패널 표시
+        self.panel.show_loading(self.display_mode)
+        
+        # 3. 워커 스레드 시작
+        self.worker = ApiWorker(screenshot, self.gemini_service, self.cache_service, self.current_model)
         self.worker.finished.connect(self.on_api_finished)
         self.worker.start()
         

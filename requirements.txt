@@ -3,3 +3,6 @@ google-genai>=0.3.0
 python-dotenv>=1.0.0
 keyboard>=0.13.5
 Pillow>=10.0.0
+imagehash
+opencv-python-headless
+numpy

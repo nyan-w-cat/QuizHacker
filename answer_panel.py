@@ -64,7 +64,7 @@ class AnswerPanel(QWidget):
         if self.current_theme == "dark":
             bg_color = f"rgba(45, 45, 48, {alpha_int})"
             border_color = f"rgba(85, 85, 85, {alpha_int})"
-            text_color = "#FFFFFF"
+            text_color = "#E0E0E0"  # 다크모드: 눈 덜 부신 밝은 회색
             status_color = "#4DAAFB"
             btn_bg = "rgba(68, 68, 68, 200)"
             btn_hover = "rgba(100, 100, 100, 200)"
@@ -72,7 +72,7 @@ class AnswerPanel(QWidget):
         else: # light 모드
             bg_color = f"rgba(245, 245, 247, {alpha_int})"
             border_color = f"rgba(200, 200, 204, {alpha_int})"
-            text_color = "#222222"
+            text_color = "#333333"  # 라이트모드: 0% 투명도에서도 잘 보이는 진한 회색
             status_color = "#0066CC"
             btn_bg = "rgba(220, 220, 224, 200)"
             btn_hover = "rgba(200, 200, 204, 200)"
@@ -84,14 +84,11 @@ class AnswerPanel(QWidget):
                 border-radius: 10px;
                 border: 1px solid {border_color};
             }}
-            QLabel {{
-                color: {text_color};
-                font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
-                background: transparent;
-            }}
         """)
         
+        # 🚨 수정됨: QSS 상속 오류를 막기 위해 개별 라벨에 색상을 직접 꽂아 넣음
         self.status_label.setStyleSheet(f"font-weight: bold; font-size: 15px; color: {status_color}; background: transparent;")
+        self.reason_label.setStyleSheet(f"color: {text_color}; background: transparent;")
         
         self.close_btn.setStyleSheet(f"""
             QPushButton {{
@@ -106,7 +103,7 @@ class AnswerPanel(QWidget):
         
         self.container.style().unpolish(self.container)
         self.container.style().polish(self.container)
-
+        
     def set_opacity(self, ratio: float):
         self.current_alpha_ratio = ratio
         self.update_container_style()
